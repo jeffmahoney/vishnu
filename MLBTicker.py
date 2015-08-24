@@ -7,7 +7,9 @@ import datetime
 import sys
 import re
 
-url = r"http://mlb.mlb.com/lookup/json/named.standings_schedule_date.bam?season=2014&schedule_game_date.game_date='%s'&sit_code='h0'&league_id=103&league_id=104&all_star_sw='N'&version=2"
+year = datetime.date.today().strftime("%Y")
+
+url = r"http://mlb.mlb.com/lookup/json/named.standings_schedule_date.bam?season=%s&schedule_game_date.game_date='%%s'&sit_code='h0'&league_id=103&league_id=104&all_star_sw='N'&version=2" % year
 
 class MLBTicker:
     def __init__(self, browser):
@@ -17,26 +19,45 @@ class MLBTicker:
         today = datetime.date.today().strftime("%Y/%m/%d")
         thisurl = url % today
 
+        name = name.upper()
+
         f = self.browser.open(thisurl)
         mlb = json.loads(f.read())
 
         standings = mlb['standings_schedule_date']['standings_all_date_rptr']['standings_all_date']
 
+        records = {}
+        division_records = {}
         for league in standings:
             league = league['queryResults']['row']
             for team in league:
-                if team['team_abbrev'] == name.upper():
-                    return {
-                        'record' : "%s-%s" % (team['w'], team['l']),
-                        'pct' :  team['pct'],
-                        'streak' : team['streak'],
-                        'place' : team['place'],
-                        'name' : team['team_full'],
-                        'l10' : team['last_ten'],
-                        'division' : team['division'],
-                        'gb' : team['gb'],
-                        'gb_wildcard' : team['gb_wildcard'],
-                    }
+                records[team['team_abbrev']] = team
+                if not team['division_id'] in division_records:
+                    division_records[team['division_id']] = []
+                division_records[team['division_id']].append(team)
+
+        if name in records:
+            team = records[name]
+            team_id = team['team_id']
+            place = 1
+
+            for div in sorted(division_records[team['division_id']],
+                              key=lambda pct: team['pct']):
+                if div['team_id'] == team_id:
+                    break
+                place += 1
+
+            return {
+                'record' : "%s-%s" % (team['w'], team['l']),
+                'pct' :  team['pct'],
+                'streak' : team['streak'],
+                'place' : "%d" % place,
+                'name' : team['team_full'],
+                'l10' : team['last_ten'],
+                'division' : team['division'],
+                'gb' : team['gb'],
+                'gb_wildcard' : team['gb_wildcard'],
+            }
 
     def get_ticker(self, name):
         st = self.get_standings(name)
